@@ -1,8 +1,8 @@
 import cloudpickle
 
 
-def serialize_task(function, *args, **kwargs):
-    """Serialize a function and its arguments."""
+def serialize_task(function, *args, **kwargs) -> bytes:
+    """Serialize a function and its arguments into bytes."""
     return cloudpickle.dumps({
         "function": function,
         "args": args,
@@ -10,8 +10,8 @@ def serialize_task(function, *args, **kwargs):
     })
 
 
-def deserialize_task(data):
-    """Deserialize task data."""
+def deserialize_task(data: bytes):
+    """Deserialize task bytes into function and arguments."""
     task = cloudpickle.loads(data)
 
     return (
@@ -21,24 +21,27 @@ def deserialize_task(data):
     )
 
 
-def execute_task(data):
-    """Deserialize and execute a serialized task."""
+def execute_task(data: bytes):
+    """Deserialize and execute a task."""
     function, args, kwargs = deserialize_task(data)
 
     return function(*args, **kwargs)
 
 
-def serialize_result(result):
-    """Serialize the execution result."""
+def serialize_result(result) -> bytes:
+    """Serialize an execution result into bytes."""
     return cloudpickle.dumps(result)
 
 
-def deserialize_result(data):
-    """Deserialize the execution result."""
+def deserialize_result(data: bytes):
+    """Deserialize result bytes back into a Python object."""
     return cloudpickle.loads(data)
 
 
-# Test functions
+# -------------------------
+# Local tests
+# -------------------------
+
 def add(a, b):
     return a + b
 
@@ -48,22 +51,20 @@ def multiply(a, b):
 
 
 if __name__ == "__main__":
-    # Create task
+    # Addition
     task = serialize_task(add, 10, 20)
-
-    print("Task serialized")
-
-    # Execute task
     result = execute_task(task)
 
-    print("Execution Result:", result)
-
-    # Serialize result
     result_data = serialize_result(result)
-
-    print("Result serialized")
-
-    # Deserialize result
     final_result = deserialize_result(result_data)
 
-    print("Final Result:", final_result)
+    print("Addition:", final_result)
+
+    # Multiplication
+    task = serialize_task(multiply, 5, 6)
+    result = execute_task(task)
+
+    result_data = serialize_result(result)
+    final_result = deserialize_result(result_data)
+
+    print("Multiplication:", final_result)
