@@ -15,6 +15,8 @@ PORT = 8888
 
 def add(a, b):
     return a + b
+def multiply(a, b):
+    return a * b
 
 
 async def handle_client(reader, writer):
@@ -70,7 +72,7 @@ async def run_client():
     print("Client: Connected to server")
 
     # Create and serialize task
-    task_data = serialize_task(add, 10, 20)
+    task_data = serialize_task(multiply, 10, 20)
 
     # Send task size + task
     writer.write(len(task_data).to_bytes(4, byteorder="big"))
