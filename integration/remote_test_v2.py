@@ -57,8 +57,6 @@ async def run_server():
 
     await server.start()
 
-    print(f"Server running on {HOST}:{PORT}")
-
     await server.serve_forever()
 
 
