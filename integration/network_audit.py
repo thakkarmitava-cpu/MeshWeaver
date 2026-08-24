@@ -30,39 +30,69 @@ async def main():
     transports = []
 
     try:
-        print("Starting 10 DHT nodes...")
+        print("Starting 10-node DHT network...")
         print()
 
-        for node in nodes:
+        # Start the first node as the bootstrap node.
+        bootstrap_node = nodes[0]
 
-            transport, _, _ = await start_node(node)
+        transport, _, _ = await start_node(
+            bootstrap_node
+        )
+
+        transports.append(transport)
+
+        print(
+            f"Bootstrap node started: "
+            f"{bootstrap_node.host}:{bootstrap_node.port}"
+        )
+
+        # Start every remaining node and join it
+        # through the previously started node.
+        for index in range(1, len(nodes)):
+
+            current_node = nodes[index]
+            previous_node = nodes[index - 1]
+
+            transport, _, joined_future = await start_node(
+                current_node,
+                bootstrap_address=previous_node.address,
+            )
 
             transports.append(transport)
 
             print(
-                f"Node started: "
-                f"{node.host}:{node.port}"
+                f"Node {current_node.port} "
+                f"joining through "
+                f"Node {previous_node.port}"
             )
 
-        print()
-        print("All 10 DHT nodes started successfully")
-
-        print()
-        print("Node Summary")
-
-        print("-" * 60)
-
-        for index, node in enumerate(nodes, start=1):
+            await asyncio.wait_for(
+                joined_future,
+                timeout=5,
+            )
 
             print(
-                f"Node {index:02d} | "
-                f"Address: {node.host}:{node.port} | "
-                f"ID: {node.node_id:040x}"
+                f"Node {current_node.port} "
+                f"joined successfully"
             )
 
-        print("-" * 60)
-
         await asyncio.sleep(1)
+
+        print()
+        print("10-node bootstrap completed")
+        print()
+
+        print("Current peer information")
+        print("-" * 50)
+
+        for node in nodes:
+            print(
+                f"Node {node.port}: "
+                f"{len(node.get_peers())} peer(s)"
+            )
+
+        print("-" * 50)
 
     finally:
 
