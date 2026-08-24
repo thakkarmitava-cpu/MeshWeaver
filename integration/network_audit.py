@@ -31,11 +31,13 @@ async def main():
     protocols = []
 
     try:
-        print("Starting 10-node DHT network...")
+        print("=" * 70)
+        print("MESHWEAVER MID-PROJECT NETWORK AUDIT")
+        print("=" * 70)
         print()
 
         # -------------------------------------------------
-        # Start bootstrap node
+        # 1. Start the bootstrap node
         # -------------------------------------------------
 
         bootstrap_node = nodes[0]
@@ -53,7 +55,7 @@ async def main():
         )
 
         # -------------------------------------------------
-        # Join remaining nodes
+        # 2. Start remaining nodes and join the network
         # -------------------------------------------------
 
         for index in range(1, len(nodes)):
@@ -85,22 +87,21 @@ async def main():
                 f"joined successfully"
             )
 
-        # Give the network time to settle.
+        # Allow the network to settle.
         await asyncio.sleep(1)
 
         # -------------------------------------------------
-        # Dynamic peer discovery
+        # 3. Dynamic peer discovery
         # -------------------------------------------------
 
         print()
-        print("Starting dynamic peer discovery...")
-        print()
+        print("-" * 70)
+        print("Starting dynamic peer discovery")
+        print("-" * 70)
 
         for index in range(1, len(nodes)):
 
             current_protocol = protocols[index]
-
-            # Ask the previous node for its known peers.
             previous_node = nodes[index - 1]
 
             peer = Peer(
@@ -112,42 +113,124 @@ async def main():
             await find_nodes(
                 current_protocol,
                 peer,
-                nodes[0].node_id,
+                bootstrap_node.node_id,
             )
 
-        # Allow UDP responses to arrive.
+        # Give UDP responses time to arrive.
         await asyncio.sleep(2)
 
         # -------------------------------------------------
-        # Display discovered peers
+        # 4. Display results
         # -------------------------------------------------
 
         print()
-        print("Dynamic peer discovery results")
-        print("-" * 60)
+        print("-" * 70)
+        print("PEER DISCOVERY RESULTS")
+        print("-" * 70)
 
         for node in nodes:
 
-            peers = node.get_peers()
-
             print(
                 f"Node {node.port}: "
-                f"{len(peers)} discovered peer(s)"
+                f"{len(node.get_peers())} peer(s)"
             )
 
-            for peer in peers:
+            for peer in node.get_peers():
 
                 print(
                     f"    -> "
                     f"{peer.host}:{peer.port}"
                 )
 
-        print("-" * 60)
+        # -------------------------------------------------
+        # 5. Automatic audit verification
+        # -------------------------------------------------
 
         print()
+        print("-" * 70)
+        print("NETWORK AUDIT VERIFICATION")
+        print("-" * 70)
+
+        total_nodes = len(nodes)
+
         print(
-            "10-node dynamic peer discovery completed"
+            f"Expected nodes : {total_nodes}"
         )
+
+        print(
+            f"Started nodes  : {len(transports)}"
+        )
+
+        # Check that every node has at least one peer.
+        isolated_nodes = [
+            node
+            for node in nodes
+            if len(node.get_peers()) == 0
+        ]
+
+        discovered_nodes = [
+            node
+            for node in nodes
+            if len(node.get_peers()) > 0
+        ]
+
+        print(
+            f"Nodes with peers: "
+            f"{len(discovered_nodes)}"
+        )
+
+        print(
+            f"Isolated nodes : "
+            f"{len(isolated_nodes)}"
+        )
+
+        if isolated_nodes:
+
+            print()
+            print("Isolated node addresses:")
+
+            for node in isolated_nodes:
+
+                print(
+                    f"    {node.host}:{node.port}"
+                )
+
+        # -------------------------------------------------
+        # 6. Final PASS / FAIL
+        # -------------------------------------------------
+
+        audit_passed = (
+            len(nodes) == 10
+            and len(transports) == 10
+            and len(isolated_nodes) == 0
+        )
+
+        print()
+        print("=" * 70)
+
+        if audit_passed:
+
+            print(
+                "NETWORK AUDIT: PASS"
+            )
+
+            print(
+                "All 10 nodes started and "
+                "discovered at least one peer."
+            )
+
+        else:
+
+            print(
+                "NETWORK AUDIT: FAIL"
+            )
+
+            print(
+                "One or more network requirements "
+                "were not satisfied."
+            )
+
+        print("=" * 70)
 
     finally:
 
