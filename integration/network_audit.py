@@ -1,7 +1,7 @@
 import asyncio
 
-from dht.node import DHTNode
-from dht.network import start_node
+from dht.node import DHTNode, Peer
+from dht.network import start_node, find_nodes
 
 
 HOST = "127.0.0.1"
@@ -28,38 +28,46 @@ async def main():
     ]
 
     transports = []
+    protocols = []
 
     try:
         print("Starting 10-node DHT network...")
         print()
 
-        # Start the first node as the bootstrap node.
+        # -------------------------------------------------
+        # Start bootstrap node
+        # -------------------------------------------------
+
         bootstrap_node = nodes[0]
 
-        transport, _, _ = await start_node(
+        transport, protocol, _ = await start_node(
             bootstrap_node
         )
 
         transports.append(transport)
+        protocols.append(protocol)
 
         print(
             f"Bootstrap node started: "
             f"{bootstrap_node.host}:{bootstrap_node.port}"
         )
 
-        # Start every remaining node and join it
-        # through the previously started node.
+        # -------------------------------------------------
+        # Join remaining nodes
+        # -------------------------------------------------
+
         for index in range(1, len(nodes)):
 
             current_node = nodes[index]
             previous_node = nodes[index - 1]
 
-            transport, _, joined_future = await start_node(
+            transport, protocol, joined_future = await start_node(
                 current_node,
                 bootstrap_address=previous_node.address,
             )
 
             transports.append(transport)
+            protocols.append(protocol)
 
             print(
                 f"Node {current_node.port} "
@@ -77,22 +85,69 @@ async def main():
                 f"joined successfully"
             )
 
+        # Give the network time to settle.
         await asyncio.sleep(1)
 
+        # -------------------------------------------------
+        # Dynamic peer discovery
+        # -------------------------------------------------
+
         print()
-        print("10-node bootstrap completed")
+        print("Starting dynamic peer discovery...")
         print()
 
-        print("Current peer information")
-        print("-" * 50)
+        for index in range(1, len(nodes)):
 
-        for node in nodes:
-            print(
-                f"Node {node.port}: "
-                f"{len(node.get_peers())} peer(s)"
+            current_protocol = protocols[index]
+
+            # Ask the previous node for its known peers.
+            previous_node = nodes[index - 1]
+
+            peer = Peer(
+                node_id=previous_node.node_id,
+                host=previous_node.host,
+                port=previous_node.port,
             )
 
-        print("-" * 50)
+            await find_nodes(
+                current_protocol,
+                peer,
+                nodes[0].node_id,
+            )
+
+        # Allow UDP responses to arrive.
+        await asyncio.sleep(2)
+
+        # -------------------------------------------------
+        # Display discovered peers
+        # -------------------------------------------------
+
+        print()
+        print("Dynamic peer discovery results")
+        print("-" * 60)
+
+        for node in nodes:
+
+            peers = node.get_peers()
+
+            print(
+                f"Node {node.port}: "
+                f"{len(peers)} discovered peer(s)"
+            )
+
+            for peer in peers:
+
+                print(
+                    f"    -> "
+                    f"{peer.host}:{peer.port}"
+                )
+
+        print("-" * 60)
+
+        print()
+        print(
+            "10-node dynamic peer discovery completed"
+        )
 
     finally:
 
