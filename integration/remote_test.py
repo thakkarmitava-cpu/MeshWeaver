@@ -1,4 +1,8 @@
 import asyncio
+import psutil
+import time
+import json
+
 
 from serialization.serializer import (
     serialize_task,
@@ -11,6 +15,84 @@ from serialization.serializer import (
 
 HOST = "127.0.0.1"
 PORT = 8888
+GOSSIP_PORT_A = 9999
+GOSSIP_PORT_B = 10000
+GOSSIP_INTERVAL = 5
+
+
+def get_system_metrics():
+    return {
+        "cpu": psutil.cpu_percent(interval=None),
+        "ram": psutil.virtual_memory().percent,
+        "timestamp": time.time(),
+    }
+
+
+class GossipProtocol(asyncio.DatagramProtocol):
+
+    def __init__(self, node_name):
+        self.node_name = node_name
+
+    def datagram_received(self, data, addr):
+        try:
+            message = json.loads(data.decode())
+
+            print(
+                f"Gossip [{self.node_name}] received from {addr}: "
+                f"CPU={message['cpu']}% "
+                f"RAM={message['ram']}%"
+            )
+
+        except Exception as e:
+            print("Gossip receive error:", e)
+
+
+async def start_gossip_node(node_name, port):
+    loop = asyncio.get_running_loop()
+
+    transport, _ = await loop.create_datagram_endpoint(
+        lambda: GossipProtocol(node_name),
+        local_addr=("127.0.0.1", port),
+    )
+
+    print(f"Gossip node {node_name} running on UDP {port}")
+
+    return transport
+
+
+async def gossip_sender(node_name, transport, neighbor_port):
+    while True:
+        metrics = get_system_metrics()
+
+        message = {
+            "node": node_name,
+            "cpu": metrics["cpu"],
+            "ram": metrics["ram"],
+            "timestamp": metrics["timestamp"],
+        }
+
+        data = json.dumps(message).encode()
+
+        transport.sendto(
+            data,
+            ("127.0.0.1", neighbor_port),
+        )
+
+        print(
+            f"Gossip [{node_name}] sent: "
+            f"CPU={metrics['cpu']}% "
+            f"RAM={metrics['ram']}%"
+        )
+
+        await asyncio.sleep(GOSSIP_INTERVAL)
+
+# def get_system_metrics():
+#     return {
+#         "cpu": psutil.cpu_percent(interval=None),
+#         "ram": psutil.virtual_memory().percent,
+#         "timestamp": time.time(),
+#     }
+# print("System metrics:", get_system_metrics())
 
 
 def add(a, b):
@@ -101,16 +183,33 @@ async def run_client():
 async def main():
     server_task = asyncio.create_task(run_server())
 
+    gossip_a = await start_gossip_node("Node-A", GOSSIP_PORT_A)
+    gossip_b = await start_gossip_node("Node-B", GOSSIP_PORT_B)
+
+    gossip_a_task = asyncio.create_task(
+        gossip_sender("Node-A", gossip_a, GOSSIP_PORT_B)
+    )
+
+    gossip_b_task = asyncio.create_task(
+        gossip_sender("Node-B", gossip_b, GOSSIP_PORT_A)
+    )
+
     try:
         await run_client()
+        await asyncio.sleep(15)
+
     finally:
+        gossip_a_task.cancel()
+        gossip_b_task.cancel()
+
+        gossip_a.close()
+        gossip_b.close()
+
         server_task.cancel()
 
         try:
             await server_task
         except asyncio.CancelledError:
             pass
-
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main())        
