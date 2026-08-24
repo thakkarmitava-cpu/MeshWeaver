@@ -55,7 +55,7 @@ async def main():
         )
 
         # -------------------------------------------------
-        # 2. Join all remaining nodes
+        # 2. Start remaining nodes and join the network
         # -------------------------------------------------
 
         for index in range(1, len(nodes)):
@@ -87,6 +87,7 @@ async def main():
                 f"joined successfully"
             )
 
+        # Allow the network to settle.
         await asyncio.sleep(1)
 
         # -------------------------------------------------
@@ -115,10 +116,11 @@ async def main():
                 bootstrap_node.node_id,
             )
 
+        # Allow UDP responses to arrive.
         await asyncio.sleep(2)
 
         # -------------------------------------------------
-        # 4. Ask the bootstrap node for discovery too
+        # 4. Additional discovery from bootstrap node
         # -------------------------------------------------
 
         for index in range(1, len(nodes)):
@@ -137,10 +139,11 @@ async def main():
                 current_node.node_id,
             )
 
+        # Allow responses to arrive.
         await asyncio.sleep(2)
 
         # -------------------------------------------------
-        # 5. Display peer information
+        # 5. Display discovery results
         # -------------------------------------------------
 
         print()
@@ -182,7 +185,7 @@ async def main():
                     invalid_peers.append(peer)
 
         # -------------------------------------------------
-        # 6. Audit calculations
+        # 6. Calculate audit results
         # -------------------------------------------------
 
         total_nodes = len(nodes)
@@ -196,49 +199,8 @@ async def main():
         )
 
         # -------------------------------------------------
-        # 7. Final audit
+        # 7. Network audit verification
         # -------------------------------------------------
-
-        print()
-        print("=" * 70)
-        print("NETWORK AUDIT VERIFICATION")
-        print("=" * 70)
-
-        print(
-            f"Expected nodes          : {total_nodes}"
-        )
-
-        print(
-            f"Started nodes           : {nodes_started}"
-        )
-
-        print(
-            f"Nodes with peers        : {nodes_with_peers}"
-        )
-
-        print(
-            f"Isolated nodes          : "
-            f"{len(isolated_nodes)}"
-        )
-
-        print(
-            f"Peer relationships      : "
-            f"{total_peer_relationships}"
-        )
-
-        print(
-            f"Invalid discovered peers: "
-            f"{len(invalid_peers)}"
-        )
-
-        # A valid audit requires:
-        # 1. Exactly 10 nodes.
-        # 2. All 10 nodes started.
-        # 3. Every node discovered at least one peer.
-        # 4. More than 10 peer relationships,
-        #    demonstrating discovery beyond a single
-        #    isolated relationship per node.
-        # 5. Every discovered peer belongs to this network.
 
         audit_passed = (
             total_nodes == 10
@@ -251,26 +213,75 @@ async def main():
 
         print()
         print("=" * 70)
+        print("MESHWEAVER NETWORK AUDIT SUMMARY")
+        print("=" * 70)
+
+        print(
+            f"Nodes tested        : {total_nodes}"
+        )
+
+        print(
+            f"Nodes started       : {nodes_started}"
+        )
+
+        print(
+            f"Nodes with peers    : {nodes_with_peers}"
+        )
+
+        print(
+            f"Peer relationships  : "
+            f"{total_peer_relationships}"
+        )
+
+        print(
+            f"Invalid peers       : "
+            f"{len(invalid_peers)}"
+        )
+
+        print(
+            f"Isolated nodes      : "
+            f"{len(isolated_nodes)}"
+        )
 
         if audit_passed:
 
-            print("NETWORK AUDIT: PASS")
-
             print(
-                "10 nodes successfully formed "
-                "a discoverable peer mesh."
+                "Network status      : PASS"
             )
 
         else:
 
-            print("NETWORK AUDIT: FAIL")
-
             print(
-                "The network did not satisfy "
-                "all audit conditions."
+                "Network status      : FAIL"
             )
 
         print("=" * 70)
+
+        # -------------------------------------------------
+        # 8. Final result
+        # -------------------------------------------------
+
+        if audit_passed:
+
+            print(
+                "10-node network audit "
+                "completed successfully."
+            )
+
+        else:
+
+            print(
+                "10-node network audit failed."
+            )
+
+            if isolated_nodes:
+                print()
+                print("Isolated nodes:")
+
+                for node in isolated_nodes:
+                    print(
+                        f"    {node.host}:{node.port}"
+                    )
 
     finally:
 
