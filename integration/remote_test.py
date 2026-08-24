@@ -100,6 +100,16 @@ def add(a, b):
 def multiply(a, b):
     return a * b
 
+def calculate_result(numbers):
+    total = sum(numbers)
+    average = total / len(numbers)
+    squared_sum = sum(x ** 2 for x in numbers)
+
+    return {
+        "total": total,
+        "average": average,
+        "squared_sum": squared_sum,
+    }
 
 async def handle_client(reader, writer):
     print("Server: Client connected")
@@ -154,7 +164,9 @@ async def run_client():
     print("Client: Connected to server")
 
     # Create and serialize task
-    task_data = serialize_task(multiply, 10, 20)
+    numbers = [10, 20, 30, 40, 50]
+
+    task_data = serialize_task(calculate_result, numbers)
 
     # Send task size + task
     writer.write(len(task_data).to_bytes(4, byteorder="big"))
