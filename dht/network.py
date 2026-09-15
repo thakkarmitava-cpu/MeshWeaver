@@ -28,6 +28,9 @@ class DHTUDPProtocol(asyncio.DatagramProtocol):
         self.joined_future = joined_future
         self.transport = None
 
+        # Heartbeat requests waiting for PONG responses.
+        self._heartbeat_waiters: dict[int, asyncio.Future] = {}
+
     def connection_made(self, transport):
         self.transport = transport
 
@@ -67,9 +70,13 @@ class DHTUDPProtocol(asyncio.DatagramProtocol):
         )
 
         self.node.add_peer(peer)
+        self.node.mark_peer_seen(sender_id)
 
         if message_type == PING:
-            self._handle_ping(peer, addr)
+            self._handle_ping(
+                peer,
+                addr,
+            )
 
         elif message_type == PONG:
             self._handle_pong(peer)
@@ -81,9 +88,7 @@ class DHTUDPProtocol(asyncio.DatagramProtocol):
             )
 
         elif message_type == NODES:
-            self._handle_nodes(
-                message
-            )
+            self._handle_nodes(message)
 
     def _handle_ping(self, peer, addr):
         """Respond to a PING request."""
@@ -110,15 +115,36 @@ class DHTUDPProtocol(asyncio.DatagramProtocol):
             f"{peer.host}:{peer.port}"
         )
 
-        print(
-            "Bootstrap successful - peer added"
+        self.node.mark_peer_seen(
+            peer.node_id
         )
 
+        # If this PONG completes the bootstrap process,
+        # resolve the bootstrap future.
         if (
             self.joined_future
             and not self.joined_future.done()
         ):
+            print(
+                "Bootstrap successful - peer added"
+            )
+
             self.joined_future.set_result(peer)
+
+        # If this PONG belongs to a heartbeat request,
+        # wake up the waiting heartbeat operation.
+        heartbeat_future = (
+            self._heartbeat_waiters.pop(
+                peer.node_id,
+                None,
+            )
+        )
+
+        if (
+            heartbeat_future
+            and not heartbeat_future.done()
+        ):
+            heartbeat_future.set_result(True)
 
     def _handle_find_node(
         self,
@@ -175,7 +201,6 @@ class DHTUDPProtocol(asyncio.DatagramProtocol):
         )
 
         for peer_data in peers:
-
             peer = Peer(
                 node_id=int(
                     peer_data["node_id"],
@@ -244,3 +269,112 @@ async def find_nodes(
         f"FIND_NODE sent to "
         f"{peer.host}:{peer.port}"
     )
+
+
+async def heartbeat_peer(
+    protocol: DHTUDPProtocol,
+    peer: Peer,
+    timeout: float = 2.0,
+) -> bool:
+    """
+    Send a PING to a peer and wait for its PONG.
+
+    Returns:
+        True  - peer responded within the timeout.
+        False - peer did not respond in time.
+    """
+
+    loop = asyncio.get_running_loop()
+
+    future = loop.create_future()
+
+    protocol._heartbeat_waiters[
+        peer.node_id
+    ] = future
+
+    protocol.transport.sendto(
+        create_ping(
+            protocol.node.node_id
+        ),
+        (peer.host, peer.port),
+    )
+
+    try:
+        await asyncio.wait_for(
+            future,
+            timeout=timeout,
+        )
+
+        protocol.node.mark_peer_seen(
+            peer.node_id
+        )
+
+        return True
+
+    except asyncio.TimeoutError:
+        protocol._heartbeat_waiters.pop(
+            peer.node_id,
+            None,
+        )
+
+        return False
+
+
+async def heartbeat_once(
+    protocol: DHTUDPProtocol,
+    timeout: float = 2.0,
+) -> dict[int, bool]:
+    """
+    Perform one heartbeat check for every known peer.
+
+    Returns:
+        Dictionary mapping peer node IDs to
+        True (alive) or False (timeout).
+    """
+
+    results = {}
+
+    peers = protocol.node.get_peers()
+
+    for peer in peers:
+        alive = await heartbeat_peer(
+            protocol,
+            peer,
+            timeout=timeout,
+        )
+
+        results[peer.node_id] = alive
+
+        if alive:
+            print(
+                f"Heartbeat ALIVE: "
+                f"{peer.host}:{peer.port}"
+            )
+        else:
+            print(
+                f"Heartbeat TIMEOUT: "
+                f"{peer.host}:{peer.port}"
+            )
+
+    return results
+
+
+async def heartbeat_loop(
+    protocol: DHTUDPProtocol,
+    interval: float = 5.0,
+    timeout: float = 2.0,
+):
+    """
+    Continuously check known peers.
+
+    Failed peers are not removed here.
+    Failure recovery is handled in a later commit.
+    """
+
+    while True:
+        await heartbeat_once(
+            protocol,
+            timeout=timeout,
+        )
+
+        await asyncio.sleep(interval)

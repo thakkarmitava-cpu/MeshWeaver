@@ -1,4 +1,5 @@
 import secrets
+import time
 from dataclasses import dataclass
 
 
@@ -43,6 +44,9 @@ class DHTNode:
 
         self.peers: dict[int, Peer] = {}
 
+        # Track the most recent time each peer was seen.
+        self.last_seen: dict[int, float] = {}
+
     @property
     def address(self) -> tuple[str, int]:
         """Return this node's network address."""
@@ -55,9 +59,25 @@ class DHTNode:
 
         self.peers[peer.node_id] = peer
 
+        # Record the first time this peer was seen.
+        self.last_seen.setdefault(
+            peer.node_id,
+            time.time(),
+        )
+
+    def mark_peer_seen(self, node_id: int) -> None:
+        """Update the last-seen time for a peer."""
+        if node_id in self.peers:
+            self.last_seen[node_id] = time.time()
+
+    def get_last_seen(self, node_id: int) -> float | None:
+        """Return the last-seen timestamp for a peer."""
+        return self.last_seen.get(node_id)
+
     def remove_peer(self, node_id: int) -> None:
-        """Remove a known peer."""
+        """Remove a known peer and its heartbeat information."""
         self.peers.pop(node_id, None)
+        self.last_seen.pop(node_id, None)
 
     def get_peers(self) -> list[Peer]:
         """Return all known peers."""
