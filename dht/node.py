@@ -59,7 +59,6 @@ class DHTNode:
 
         self.peers[peer.node_id] = peer
 
-        # Record the first time this peer was seen.
         self.last_seen.setdefault(
             peer.node_id,
             time.time(),
@@ -75,13 +74,21 @@ class DHTNode:
         return self.last_seen.get(node_id)
 
     def remove_peer(self, node_id: int) -> None:
-        """Remove a known peer and its heartbeat information."""
+        """Remove a peer and its heartbeat information."""
         self.peers.pop(node_id, None)
         self.last_seen.pop(node_id, None)
 
     def get_peers(self) -> list[Peer]:
         """Return all known peers."""
         return list(self.peers.values())
+
+    def has_peer(self, node_id: int) -> bool:
+        """Check whether a peer is currently known."""
+        return node_id in self.peers
+
+    def peer_count(self) -> int:
+        """Return the number of currently known peers."""
+        return len(self.peers)
 
     def __repr__(self) -> str:
         return (

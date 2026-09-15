@@ -29,7 +29,10 @@ class DHTUDPProtocol(asyncio.DatagramProtocol):
         self.transport = None
 
         # Heartbeat requests waiting for PONG responses.
-        self._heartbeat_waiters: dict[int, asyncio.Future] = {}
+        self._heartbeat_waiters: dict[
+            int,
+            asyncio.Future,
+        ] = {}
 
     def connection_made(self, transport):
         self.transport = transport
@@ -47,7 +50,9 @@ class DHTUDPProtocol(asyncio.DatagramProtocol):
             )
 
             self.transport.sendto(
-                create_ping(self.node.node_id),
+                create_ping(
+                    self.node.node_id
+                ),
                 self.bootstrap_address,
             )
 
@@ -119,8 +124,8 @@ class DHTUDPProtocol(asyncio.DatagramProtocol):
             peer.node_id
         )
 
-        # If this PONG completes the bootstrap process,
-        # resolve the bootstrap future.
+        # Complete bootstrap if this is the
+        # initial bootstrap PONG.
         if (
             self.joined_future
             and not self.joined_future.done()
@@ -131,8 +136,7 @@ class DHTUDPProtocol(asyncio.DatagramProtocol):
 
             self.joined_future.set_result(peer)
 
-        # If this PONG belongs to a heartbeat request,
-        # wake up the waiting heartbeat operation.
+        # Complete a waiting heartbeat request.
         heartbeat_future = (
             self._heartbeat_waiters.pop(
                 peer.node_id,
@@ -245,7 +249,11 @@ async def start_node(
         )
     )
 
-    return transport, protocol, joined_future
+    return (
+        transport,
+        protocol,
+        joined_future,
+    )
 
 
 async def find_nodes(
@@ -280,8 +288,8 @@ async def heartbeat_peer(
     Send a PING to a peer and wait for its PONG.
 
     Returns:
-        True  - peer responded within the timeout.
-        False - peer did not respond in time.
+        True if the peer responds.
+        False if the heartbeat times out.
     """
 
     loop = asyncio.get_running_loop()
@@ -324,13 +332,7 @@ async def heartbeat_once(
     protocol: DHTUDPProtocol,
     timeout: float = 2.0,
 ) -> dict[int, bool]:
-    """
-    Perform one heartbeat check for every known peer.
-
-    Returns:
-        Dictionary mapping peer node IDs to
-        True (alive) or False (timeout).
-    """
+    """Perform one heartbeat check for every known peer."""
 
     results = {}
 
@@ -367,8 +369,8 @@ async def heartbeat_loop(
     """
     Continuously check known peers.
 
-    Failed peers are not removed here.
-    Failure recovery is handled in a later commit.
+    Failed peers are removed after the configured
+    number of consecutive failures.
     """
 
     while True:
@@ -378,3 +380,132 @@ async def heartbeat_loop(
         )
 
         await asyncio.sleep(interval)
+
+
+async def check_peer_health(
+    protocol: DHTUDPProtocol,
+    peer: Peer,
+    timeout: float = 2.0,
+    failure_threshold: int = 3,
+) -> bool:
+    """
+    Check peer health with repeated heartbeat attempts.
+
+    A peer must fail all attempts before being
+    considered unreachable.
+
+    Returns:
+        True if peer is healthy.
+        False if peer is considered failed.
+    """
+
+    for attempt in range(
+        1,
+        failure_threshold + 1,
+    ):
+        alive = await heartbeat_peer(
+            protocol,
+            peer,
+            timeout=timeout,
+        )
+
+        if alive:
+            print(
+                f"Peer healthy: "
+                f"{peer.host}:{peer.port}"
+            )
+
+            return True
+
+        print(
+            f"Heartbeat failure "
+            f"{attempt}/{failure_threshold}: "
+            f"{peer.host}:{peer.port}"
+        )
+
+    return False
+
+
+async def remove_failed_peer(
+    protocol: DHTUDPProtocol,
+    peer: Peer,
+    timeout: float = 2.0,
+    failure_threshold: int = 3,
+) -> bool:
+    """
+    Check a peer and remove it if it remains unreachable.
+
+    Returns:
+        True if the peer was removed.
+        False if the peer remained healthy.
+    """
+
+    healthy = await check_peer_health(
+        protocol,
+        peer,
+        timeout=timeout,
+        failure_threshold=failure_threshold,
+    )
+
+    if healthy:
+        return False
+
+    print(
+        f"Peer failed health check: "
+        f"{peer.host}:{peer.port}"
+    )
+
+    protocol.node.remove_peer(
+        peer.node_id
+    )
+
+    print(
+        f"Removed failed peer: "
+        f"{peer.host}:{peer.port}"
+    )
+
+    return True
+
+
+async def fault_tolerant_heartbeat(
+    protocol: DHTUDPProtocol,
+    timeout: float = 2.0,
+    failure_threshold: int = 3,
+) -> dict[int, bool]:
+    """
+    Check all peers and remove unreachable peers.
+
+    Returns:
+        Dictionary mapping peer IDs to their final
+        health status.
+    """
+
+    results = {}
+
+    # Make a copy because failed peers may be removed
+    # while iterating.
+    peers = list(
+        protocol.node.get_peers()
+    )
+
+    for peer in peers:
+        healthy = await check_peer_health(
+            protocol,
+            peer,
+            timeout=timeout,
+            failure_threshold=failure_threshold,
+        )
+
+        results[peer.node_id] = healthy
+
+        if not healthy:
+            protocol.node.remove_peer(
+                peer.node_id
+            )
+
+            print(
+                f"Removed failed peer: "
+                f"{peer.host}:{peer.port}"
+            )
+
+    return results
